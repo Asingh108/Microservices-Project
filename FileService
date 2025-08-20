@@ -1,0 +1,55 @@
+// Code for file_service
+const express = require('express');
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const AWS = require('aws-sdk');
+const { error } = require('console');
+require('dotenv').config();
+
+const app = express();
+app.use(express.raw({type: '*/*', limit: '50mb'}));
+
+// MongoDB model 
+const fileSchema = new mongoose.Schema({
+    filename: String,
+    size: Number,
+    userId: String,
+    s3Key: String
+});
+const File = mongoose.model('File', fileSchema);
+
+// Auth-midd 
+function auth(req, res, next){
+    const token = req.headers.authorization?.split("")[1];
+    if (!token) return res.status(401).json({error: "No token"});
+    try{
+        req.user = jwt.verify(token, process.env.JWT_SECRET);
+        next();
+    } catch{
+        res.status(401).json({error: "Invaid token"});
+    }
+}
+
+// uplod route 
+app.post('/upload', auth, async(req, res)=>{
+    const {filename}=req.query;
+    if (!filename) return res.status(400).json({error: "Missing Filename"});
+
+    const s3Key = `${req.user.userId}/${Date.now()}_${filename}`;
+    await s3.putObject({
+        Bucket: process.env.S3_BUCKET,
+        Key: s3Key,
+        Body: req.body
+    }).promise();
+
+    const fileDoc = await File.create({
+        filename,
+        size: req.body.length,
+        userId: req.user.userId,
+        s3Key
+    });
+    res.json({message: "File uploaded",fileId: fileDoc._id});
+});
+mongoose.connect(process.env.MONGO_URI).then(()=>{
+    app.listen(5000, ()=> console.log("File service running on 5000"));
+});
