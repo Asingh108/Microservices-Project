@@ -1,0 +1,43 @@
+// Auth_service code
+const express = require('express');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+require('dotenv').config();
+
+const app = express();
+app.use(express.json());
+
+// User Model
+const userScreen = new mongoose.Schema({email: {type: String, unique: true}, passwod: String});
+const User = mongoose.model('User', userScreen);
+
+// Registration
+app.post('/register' , async(req,res)=> {
+    const{email, passwod}=req.body;
+    const hashed = await bcrypt.hash(passwod,10);
+    try{
+        const user = await User.create({email, passwod: hashed});
+        res.json({message: "User register", id: user._id});
+    }
+    catch(e){
+        res.status(400).json({error:"Email already exists"});
+    }
+});
+
+// login user 
+app.post('/login', async(req,res)=>{
+    const {email, password}=req.body;
+    const user = await User.findOne({email});
+    if (!user) return res.status(401).json({error: "Invaild credentials"});
+
+    const match = await bcrypt.compare(password, user.passwod);
+    if (!match) return res.status(401).json({error: "Invalid credentials"});
+
+    const token = jwt.sign({userId: user._id, email: user.email}, process.env.JWT_SECRET, {expiresIn: "1h"});
+    res.json({token});
+});
+
+mongoose.connect(process.env.MONGO_URI).then(()=>{
+    app.listen(4000, ()=>console.log("Auth service running on 4000"));
+});
